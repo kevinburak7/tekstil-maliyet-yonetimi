@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Build / reverse-engineering artifacts
+extracted/
+tools/
+*.exe
+*.pyc
+*.spec
+build/
+dist/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.db
+*.db-journal
