@@ -74,15 +74,19 @@ class TestMaliyetHesapla(unittest.TestCase):
 
 class TestVeritabani(unittest.TestCase):
     def setUp(self):
+        import tekstil_maliyet.constants as constants
+
         self._fd, self.path = tempfile.mkstemp(suffix=".db")
         os.close(self._fd)
-        self._old = maliyet.DB_YOLU
-        maliyet.DB_YOLU = self.path
+        self._old = constants.DB_YOLU
+        constants.DB_YOLU = self.path
         self.db = Veritabani()
 
     def tearDown(self):
+        import tekstil_maliyet.constants as constants
+
         self.db.conn.close()
-        maliyet.DB_YOLU = self._old
+        constants.DB_YOLU = self._old
         try:
             os.remove(self.path)
         except OSError:
@@ -174,6 +178,107 @@ class TestExcelAktar(unittest.TestCase):
                 os.remove(path)
             except OSError:
                 pass
+
+
+class TestPdfAktar(unittest.TestCase):
+    def test_pdf_dosya_olusturur(self):
+        from maliyet import pdf_aktar
+
+        receteler = [
+            {
+                "id": 1,
+                "tur": "Boya",
+                "isim": "Demo Boya",
+                "parametre": 1.0,
+                "fire_orani": 1.2,
+                "tarih": "2026-01-01",
+                "icerik": [
+                    {
+                        "ad": "Boy",
+                        "miktar": 2.0,
+                        "birim": "% (Boya)",
+                        "fiyat": 100.0,
+                        "para": "TL",
+                    }
+                ],
+            }
+        ]
+        fd, path = tempfile.mkstemp(suffix=".pdf")
+        os.close(fd)
+        try:
+            pdf_aktar(path, receteler, KURLAR)
+            self.assertTrue(os.path.getsize(path) > 100)
+            with open(path, "rb") as f:
+                self.assertEqual(f.read(4), b"%PDF")
+        finally:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+
+class TestKarsilastir(unittest.TestCase):
+    def test_en_ucuz_ve_fark(self):
+        from maliyet import karsilastir
+
+        a = {
+            "id": 1,
+            "tur": "Boya",
+            "isim": "Ucuz",
+            "parametre": 1.0,
+            "fire_orani": 1.2,
+            "icerik": [
+                {
+                    "ad": "Boy",
+                    "miktar": 1.0,
+                    "birim": "% (Boya)",
+                    "fiyat": 100.0,
+                    "para": "TL",
+                }
+            ],
+        }
+        b = {
+            "id": 2,
+            "tur": "Boya",
+            "isim": "Pahali",
+            "parametre": 1.0,
+            "fire_orani": 1.2,
+            "icerik": [
+                {
+                    "ad": "Boy",
+                    "miktar": 2.0,
+                    "birim": "% (Boya)",
+                    "fiyat": 100.0,
+                    "para": "TL",
+                }
+            ],
+        }
+        # a: 1.2, b: 2.4
+        sonuc = karsilastir([a, b], KURLAR)
+        self.assertEqual(sonuc["en_ucuz_id"], 1)
+        self.assertAlmostEqual(sonuc["en_ucuz_maliyet"], 1.2)
+        pahali = next(o for o in sonuc["ozetler"] if o["id"] == 2)
+        self.assertAlmostEqual(pahali["fark_tl"], 1.2)
+        self.assertAlmostEqual(pahali["fark_yuzde"], 100.0)
+        self.assertEqual(len(sonuc["urun_satirlari"]), 1)
+        self.assertEqual(sonuc["urun_satirlari"][0]["ad"], "Boy")
+
+    def test_en_az_iki(self):
+        from maliyet import karsilastir
+
+        with self.assertRaises(ValueError):
+            karsilastir(
+                [
+                    {
+                        "id": 1,
+                        "tur": "Boya",
+                        "isim": "X",
+                        "parametre": 1,
+                        "icerik": [],
+                    }
+                ],
+                KURLAR,
+            )
 
 
 if __name__ == "__main__":
