@@ -5,7 +5,7 @@ import unittest
 
 import maliyet
 from maliyet import (
-    FIRE_ORANI,
+    FIRE_ORANI_VARSAYILAN,
     ValidationError,
     Veritabani,
     maliyet_hesapla,
@@ -64,7 +64,12 @@ class TestMaliyetHesapla(unittest.TestCase):
         self.assertAlmostEqual(recete_toplam(items, "Kimyasal", 10, KURLAR), 3.0)
 
     def test_fire_orani_sabiti(self):
-        self.assertEqual(FIRE_ORANI, 1.2)
+        self.assertEqual(FIRE_ORANI_VARSAYILAN, 1.2)
+
+    def test_ozel_fire_orani(self):
+        item = {"miktar": 2, "fiyat": 100, "para": "TL", "birim": "% (Boya)"}
+        # 2 * 100 / 100 * 1.5 = 3.0
+        self.assertAlmostEqual(maliyet_hesapla(item, "Boya", 1, KURLAR, 1.5), 3.0)
 
 
 class TestVeritabani(unittest.TestCase):
@@ -87,21 +92,25 @@ class TestVeritabani(unittest.TestCase):
         icerik = [
             {"ad": "Asit", "miktar": 2.0, "birim": "g/l", "fiyat": 10.0, "para": "TL"}
         ]
-        rid = self.db.kaydet("Kimyasal", "Test Recete", 8.0, icerik)
+        rid = self.db.kaydet("Kimyasal", "Test Recete", 8.0, icerik, fire_orani=1.35)
         self.assertIsInstance(rid, int)
 
         rec = self.db.getir_by_id(rid)
         self.assertEqual(rec["isim"], "Test Recete")
+        self.assertAlmostEqual(rec["fire_orani"], 1.35)
         self.assertEqual(len(rec["icerik"]), 1)
         self.assertEqual(rec["icerik"][0]["ad"], "Asit")
 
         yeni = [
             {"ad": "Tuz", "miktar": 1.0, "birim": "%", "fiyat": 5.0, "para": "USD"}
         ]
-        self.assertTrue(self.db.guncelle(rid, "Kimyasal", "Test Recete 2", 10.0, yeni))
+        self.assertTrue(
+            self.db.guncelle(rid, "Kimyasal", "Test Recete 2", 10.0, yeni, fire_orani=1.1)
+        )
         rec2 = self.db.getir_by_id(rid)
         self.assertEqual(rec2["isim"], "Test Recete 2")
         self.assertEqual(rec2["parametre"], 10.0)
+        self.assertAlmostEqual(rec2["fire_orani"], 1.1)
         self.assertEqual(rec2["icerik"][0]["ad"], "Tuz")
 
         self.assertEqual(self.db.son_id_by_isim("Kimyasal", "Test Recete 2"), rid)
@@ -133,6 +142,7 @@ class TestExcelAktar(unittest.TestCase):
                 "tur": "Boya",
                 "isim": "Demo",
                 "parametre": 1.0,
+                "fire_orani": 1.5,
                 "tarih": "2026-01-01",
                 "icerik": [
                     {
@@ -156,6 +166,9 @@ class TestExcelAktar(unittest.TestCase):
             self.assertIn("Ozet", wb.sheetnames)
             self.assertIn("Detay", wb.sheetnames)
             self.assertEqual(wb["Ozet"][2][2].value, "Demo")
+            self.assertEqual(wb["Ozet"][2][4].value, 1.5)
+            # 2*100/100*1.5 = 3.0
+            self.assertAlmostEqual(float(wb["Ozet"][2][6].value), 3.0)
         finally:
             try:
                 os.remove(path)

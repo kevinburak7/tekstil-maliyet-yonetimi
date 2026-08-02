@@ -11,8 +11,8 @@ DB_YOLU = os.path.join(os.path.expanduser("~"), "tekstil_maliyet_pro.db")
 KUR_CACHE_YOLU = os.path.join(os.path.expanduser("~"), "tekstil_maliyet_kur_cache.json")
 TCMB_URL = "https://www.tcmb.gov.tr/kurlar/today.xml"
 KUR_TIMEOUT_SN = 8
-# Tekstil fire / proses katsayısı (ayarlanabilir)
-FIRE_ORANI = 1.2
+# Varsayılan fire / proses katsayısı (formda değiştirilebilir)
+FIRE_ORANI_VARSAYILAN = 1.2
 YEDEK_KURLAR = {"TL": 1.0, "USD": 35.0, "EUR": 38.0}
 
 RENK_SIDEBAR = "#2c3e50"
@@ -43,7 +43,7 @@ def parse_float(val, alan_adi="Değer"):
         raise ValidationError(f"{alan_adi} geçerli bir sayı değil: {val!r}") from exc
 
 
-def maliyet_hesapla(item, tip, parametre, kurlar, fire_orani=FIRE_ORANI):
+def maliyet_hesapla(item, tip, parametre, kurlar, fire_orani=FIRE_ORANI_VARSAYILAN):
     """
     Tek maliyet formülü.
     Kimyasal g/l: miktar * fiyat_tl * flotte / 10 / 100 * fire
@@ -74,13 +74,13 @@ def maliyet_hesapla(item, tip, parametre, kurlar, fire_orani=FIRE_ORANI):
     raise ValidationError(f"Bilinmeyen işlem türü: {tip}")
 
 
-def recete_toplam(icerik, tip, parametre, kurlar, fire_orani=FIRE_ORANI):
+def recete_toplam(icerik, tip, parametre, kurlar, fire_orani=FIRE_ORANI_VARSAYILAN):
     return sum(
         maliyet_hesapla(item, tip, parametre, kurlar, fire_orani) for item in icerik
     )
 
 
-def excel_aktar(dosya_yolu, receteler, kurlar, fire_orani=FIRE_ORANI):
+def excel_aktar(dosya_yolu, receteler, kurlar):
     """Reçete listesini Excel (.xlsx) dosyasına yazar. openpyxl gerekir."""
     try:
         from openpyxl import Workbook
@@ -93,7 +93,18 @@ def excel_aktar(dosya_yolu, receteler, kurlar, fire_orani=FIRE_ORANI):
     wb = Workbook()
     ws_ozet = wb.active
     ws_ozet.title = "Ozet"
-    ws_ozet.append(["ID", "Tur", "Isim", "Parametre", "Tarih", "Maliyet_TL_Kg", "Satir_Sayisi"])
+    ws_ozet.append(
+        [
+            "ID",
+            "Tur",
+            "Isim",
+            "Parametre",
+            "Fire_Orani",
+            "Tarih",
+            "Maliyet_TL_Kg",
+            "Satir_Sayisi",
+        ]
+    )
     for cell in ws_ozet[1]:
         cell.font = Font(bold=True)
 
@@ -103,6 +114,7 @@ def excel_aktar(dosya_yolu, receteler, kurlar, fire_orani=FIRE_ORANI):
             "Recete_ID",
             "Recete_Adi",
             "Tur",
+            "Fire_Orani",
             "Urun",
             "Miktar",
             "Birim",
@@ -115,13 +127,14 @@ def excel_aktar(dosya_yolu, receteler, kurlar, fire_orani=FIRE_ORANI):
         cell.font = Font(bold=True)
 
     for recete in receteler:
+        fire = float(recete.get("fire_orani") or FIRE_ORANI_VARSAYILAN)
         try:
             toplam = recete_toplam(
                 recete["icerik"],
                 recete["tur"],
                 recete["parametre"],
                 kurlar,
-                fire_orani,
+                fire,
             )
         except ValidationError:
             toplam = 0.0
@@ -131,6 +144,7 @@ def excel_aktar(dosya_yolu, receteler, kurlar, fire_orani=FIRE_ORANI):
                 recete["tur"],
                 recete["isim"],
                 recete["parametre"],
+                fire,
                 str(recete.get("tarih") or ""),
                 round(toplam, 6),
                 len(recete.get("icerik") or []),
@@ -143,7 +157,7 @@ def excel_aktar(dosya_yolu, receteler, kurlar, fire_orani=FIRE_ORANI):
                     recete["tur"],
                     recete["parametre"],
                     kurlar,
-                    fire_orani,
+                    fire,
                 )
             except ValidationError:
                 satir_maliyet = 0.0
@@ -152,6 +166,7 @@ def excel_aktar(dosya_yolu, receteler, kurlar, fire_orani=FIRE_ORANI):
                     recete["id"],
                     recete["isim"],
                     recete["tur"],
+                    fire,
                     item["ad"],
                     item["miktar"],
                     item["birim"],
@@ -180,6 +195,7 @@ class Veritabani:
                 tur TEXT,
                 isim TEXT,
                 parametre REAL,
+                fire_orani REAL DEFAULT 1.2,
                 tarih DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """
@@ -211,7 +227,18 @@ class Veritabani:
             )
         """
         )
+        self._migrate_fire_orani()
         self.conn.commit()
+
+    def _migrate_fire_orani(self):
+        cols = {
+            row[1]
+            for row in self.cursor.execute("PRAGMA table_info(receteler)").fetchall()
+        }
+        if "fire_orani" not in cols:
+            self.cursor.execute(
+                f"ALTER TABLE receteler ADD COLUMN fire_orani REAL DEFAULT {FIRE_ORANI_VARSAYILAN}"
+            )
 
     def _icerik_ekle(self, recete_id, icerik_listesi):
         for item in icerik_listesi:
@@ -246,24 +273,32 @@ class Veritabani:
             for i in self.cursor.fetchall()
         ]
 
-    def kaydet(self, tur, isim, parametre, icerik_listesi):
+    def kaydet(self, tur, isim, parametre, icerik_listesi, fire_orani=FIRE_ORANI_VARSAYILAN):
         self.cursor.execute(
-            "INSERT INTO receteler (tur, isim, parametre) VALUES (?, ?, ?)",
-            (tur, isim, parametre),
+            "INSERT INTO receteler (tur, isim, parametre, fire_orani) VALUES (?, ?, ?, ?)",
+            (tur, isim, parametre, fire_orani),
         )
         recete_id = self.cursor.lastrowid
         self._icerik_ekle(recete_id, icerik_listesi)
         self.conn.commit()
         return recete_id
 
-    def guncelle(self, recete_id, tur, isim, parametre, icerik_listesi):
+    def guncelle(
+        self,
+        recete_id,
+        tur,
+        isim,
+        parametre,
+        icerik_listesi,
+        fire_orani=FIRE_ORANI_VARSAYILAN,
+    ):
         self.cursor.execute(
             """
             UPDATE receteler
-            SET tur=?, isim=?, parametre=?, tarih=CURRENT_TIMESTAMP
+            SET tur=?, isim=?, parametre=?, fire_orani=?, tarih=CURRENT_TIMESTAMP
             WHERE id=?
             """,
-            (tur, isim, parametre, recete_id),
+            (tur, isim, parametre, fire_orani, recete_id),
         )
         if self.cursor.rowcount == 0:
             return False
@@ -275,9 +310,9 @@ class Veritabani:
     def getir_hepsi(self):
         veriler = []
         self.cursor.execute(
-            "SELECT id, tur, isim, parametre, tarih FROM receteler ORDER BY id DESC"
+            "SELECT id, tur, isim, parametre, tarih, fire_orani FROM receteler ORDER BY id DESC"
         )
-        for r_id, r_tur, r_isim, r_param, r_tarih in self.cursor.fetchall():
+        for r_id, r_tur, r_isim, r_param, r_tarih, r_fire in self.cursor.fetchall():
             veriler.append(
                 {
                     "id": r_id,
@@ -285,6 +320,11 @@ class Veritabani:
                     "isim": r_isim,
                     "parametre": r_param,
                     "tarih": r_tarih or "",
+                    "fire_orani": (
+                        float(r_fire)
+                        if r_fire is not None
+                        else FIRE_ORANI_VARSAYILAN
+                    ),
                     "icerik": self._icerik_getir(r_id),
                 }
             )
@@ -292,19 +332,22 @@ class Veritabani:
 
     def getir_by_id(self, recete_id):
         self.cursor.execute(
-            "SELECT id, tur, isim, parametre, tarih FROM receteler WHERE id=?",
+            "SELECT id, tur, isim, parametre, tarih, fire_orani FROM receteler WHERE id=?",
             (recete_id,),
         )
         row = self.cursor.fetchone()
         if not row:
             return None
-        r_id, r_tur, r_isim, r_param, r_tarih = row
+        r_id, r_tur, r_isim, r_param, r_tarih, r_fire = row
         return {
             "id": r_id,
             "tur": r_tur,
             "isim": r_isim,
             "parametre": r_param,
             "tarih": r_tarih or "",
+            "fire_orani": (
+                float(r_fire) if r_fire is not None else FIRE_ORANI_VARSAYILAN
+            ),
             "icerik": self._icerik_getir(r_id),
         }
 
@@ -656,18 +699,29 @@ class BasePage(ttk.Frame):
         )
         self.ent_param = ttk.Entry(grid_frame, width=15, font=FONT_NORMAL)
 
+        col = 2
         if tip == "Kimyasal":
             self.lbl_param.config(text="Flotte (1/X)")
-            self.lbl_param.grid(row=0, column=2, padx=10, sticky="w")
-            self.ent_param.grid(row=1, column=2, padx=10, pady=5)
-            btn_col = 3
+            self.lbl_param.grid(row=0, column=col, padx=10, sticky="w")
+            self.ent_param.grid(row=1, column=col, padx=10, pady=5)
+            col += 1
         elif tip == "Apre":
             self.lbl_param.config(text="Pick-up (%)")
-            self.lbl_param.grid(row=0, column=2, padx=10, sticky="w")
-            self.ent_param.grid(row=1, column=2, padx=10, pady=5)
-            btn_col = 3
-        else:
-            btn_col = 2
+            self.lbl_param.grid(row=0, column=col, padx=10, sticky="w")
+            self.ent_param.grid(row=1, column=col, padx=10, pady=5)
+            col += 1
+
+        tk.Label(
+            grid_frame,
+            text="Fire Oranı",
+            bg=RENK_KART,
+            font=FONT_BOLD,
+            fg="#7f8c8d",
+        ).grid(row=0, column=col, padx=10, sticky="w")
+        self.ent_fire = ttk.Entry(grid_frame, width=12, font=FONT_NORMAL)
+        self.ent_fire.insert(0, str(FIRE_ORANI_VARSAYILAN))
+        self.ent_fire.grid(row=1, column=col, padx=10, pady=5)
+        btn_col = col + 1
 
         ModernButton(
             grid_frame,
@@ -748,6 +802,8 @@ class BasePage(ttk.Frame):
         self.ent_sayi.delete(0, tk.END)
         if self.tip in ("Kimyasal", "Apre"):
             self.ent_param.delete(0, tk.END)
+        self.ent_fire.delete(0, tk.END)
+        self.ent_fire.insert(0, str(FIRE_ORANI_VARSAYILAN))
         for widget in self.mid_panel.scrollable_frame.winfo_children():
             widget.destroy()
         self.urun_satirlari.clear()
@@ -892,18 +948,26 @@ class BasePage(ttk.Frame):
         if self.tip in ("Kimyasal", "Apre"):
             self.ent_param.delete(0, tk.END)
             self.ent_param.insert(0, str(recete.get("parametre", "")))
+        self.ent_fire.delete(0, tk.END)
+        self.ent_fire.insert(
+            0, str(recete.get("fire_orani", FIRE_ORANI_VARSAYILAN))
+        )
         self.tabloyu_olustur(icerik=recete.get("icerik") or [])
         self._durum_guncelle()
         self.hesapla()
 
     def verileri_al(self):
-        """Returns (icerik, parametre). ValidationError fırlatabilir."""
+        """Returns (icerik, parametre, fire_orani). ValidationError fırlatabilir."""
         parametre = 1.0
         if self.tip in ("Kimyasal", "Apre"):
             alan = "Flotte (1/X)" if self.tip == "Kimyasal" else "Pick-up (%)"
             parametre = parse_float(self.ent_param.get(), alan)
             if parametre <= 0:
                 raise ValidationError(f"{alan} sıfırdan büyük olmalıdır.")
+
+        fire_orani = parse_float(self.ent_fire.get(), "Fire oranı")
+        if fire_orani <= 0:
+            raise ValidationError("Fire oranı sıfırdan büyük olmalıdır.")
 
         icerik = []
         for satir_no, (e_ad, e_mik, c_bir, e_fiy, c_par) in enumerate(
@@ -924,13 +988,13 @@ class BasePage(ttk.Frame):
 
         if not icerik:
             raise ValidationError("Hesaplamak için en az bir ürün satırı doldurun.")
-        return icerik, parametre
+        return icerik, parametre, fire_orani
 
     def hesapla(self):
         try:
-            data, param = self.verileri_al()
+            data, param, fire = self.verileri_al()
             toplam_tl = recete_toplam(
-                data, self.tip, param, self.controller.kurlar, FIRE_ORANI
+                data, self.tip, param, self.controller.kurlar, fire
             )
         except ValidationError as exc:
             messagebox.showerror("Hata", str(exc))
@@ -951,7 +1015,7 @@ class BasePage(ttk.Frame):
         if tutar is None:
             return
         try:
-            data, param = self.verileri_al()
+            data, param, fire = self.verileri_al()
         except ValidationError as exc:
             messagebox.showerror("Hata", str(exc))
             return
@@ -959,7 +1023,9 @@ class BasePage(ttk.Frame):
         db = self.controller.db
 
         if self.duzenlenen_id:
-            ok = db.guncelle(self.duzenlenen_id, self.tip, isim, param, data)
+            ok = db.guncelle(
+                self.duzenlenen_id, self.tip, isim, param, data, fire
+            )
             if not ok:
                 messagebox.showerror("Hata", "Güncellenecek kayıt bulunamadı.")
                 return
@@ -980,7 +1046,7 @@ class BasePage(ttk.Frame):
             if cevap is None:
                 return
             if cevap:
-                db.guncelle(mevcut_id, self.tip, isim, param, data)
+                db.guncelle(mevcut_id, self.tip, isim, param, data, fire)
                 self.duzenlenen_id = mevcut_id
                 self._durum_guncelle()
                 messagebox.showinfo(
@@ -988,7 +1054,7 @@ class BasePage(ttk.Frame):
                 )
                 return
 
-        yeni_id = db.kaydet(self.tip, isim, param, data)
+        yeni_id = db.kaydet(self.tip, isim, param, data, fire)
         self.duzenlenen_id = yeni_id
         self._durum_guncelle()
         messagebox.showinfo("Başarılı", f"Reçete kaydedildi (ID: {yeni_id}).")
@@ -1260,13 +1326,14 @@ class ArsivPage(ttk.Frame):
         for i in self.tree.get_children():
             self.tree.delete(i)
         for recete in self.controller.db.getir_hepsi():
+            fire = float(recete.get("fire_orani") or FIRE_ORANI_VARSAYILAN)
             try:
                 tutar = recete_toplam(
                     recete["icerik"],
                     recete["tur"],
                     recete["parametre"],
                     self.controller.kurlar,
-                    FIRE_ORANI,
+                    fire,
                 )
             except ValidationError:
                 tutar = 0.0
@@ -1354,7 +1421,7 @@ class ArsivPage(ttk.Frame):
         if not yol:
             return
         try:
-            excel_aktar(yol, receteler, self.controller.kurlar, FIRE_ORANI)
+            excel_aktar(yol, receteler, self.controller.kurlar)
         except RuntimeError as exc:
             messagebox.showerror("Hata", str(exc))
             return
@@ -1378,6 +1445,7 @@ class ArsivPage(ttk.Frame):
         tur = recete["tur"]
         isim = recete["isim"]
         param = recete["parametre"]
+        fire = float(recete.get("fire_orani") or FIRE_ORANI_VARSAYILAN)
         icerik = recete["icerik"]
         if tur == "Kimyasal":
             p_str = f"Flotte: 1/{param}"
@@ -1388,6 +1456,7 @@ class ArsivPage(ttk.Frame):
         msg = (
             f"ID: {recete['id']}\n"
             f"Reçete: {isim} ({tur})\n{p_str}\n"
+            f"Fire Oranı: {fire}\n"
             f"Tarih: {recete.get('tarih') or '-'}\n\n"
             f"{'ÜRÜN ADI':<20} {'MİKTAR':<8} {'BİRİM':<8} {'FİYAT':<8}\n"
             + "------------------------------------------------------------\n"
@@ -1400,7 +1469,7 @@ class ArsivPage(ttk.Frame):
             )
             try:
                 toplam_maliyet += maliyet_hesapla(
-                    item, tur, param, self.controller.kurlar, FIRE_ORANI
+                    item, tur, param, self.controller.kurlar, fire
                 )
             except ValidationError:
                 pass
