@@ -12,10 +12,11 @@ Tekstil boya / yardımcı kimyasal / apre (bitim) reçeteleri için birim maliye
 ## Çalıştırma
 
 ```bash
+pip install -r requirements.txt
 python maliyet.py
 ```
 
-Python 3.10+ ve Tkinter gerekir (standart kütüphane; ek paket yok).
+Python 3.10+ ve Tkinter gerekir. Excel aktarımı için `openpyxl` kullanılır.
 
 ## Veritabanı
 
