@@ -1,19 +1,42 @@
 """Reçete hesaplama sayfaları."""
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import ttk
 
 from tekstil_maliyet.constants import (
     FIRE_ORANI_VARSAYILAN,
     FONT_BASLIK,
     FONT_BOLD,
     FONT_NORMAL,
+    IPUCU_FIRE,
+    IPUCU_FLOTTE,
+    IPUCU_PICKUP,
+    RENK_BANNER,
+    RENK_BANNER_METIN,
+    RENK_BASARI,
     RENK_BG,
+    RENK_IKINCIL,
     RENK_KART,
+    RENK_METIN,
+    RENK_METIN_SOLUK,
     RENK_SIDEBAR,
+    RENK_TEHLIKE,
     RENK_VURGU,
 )
-from tekstil_maliyet.hesaplama import ValidationError, parse_float, recete_toplam
-from tekstil_maliyet.ui.widgets import ModernButton, ScrollableFrame
+from tekstil_maliyet.hesaplama import (
+    ValidationError,
+    parse_float,
+    parse_pozitif,
+    recete_toplam,
+)
+from tekstil_maliyet.ui.widgets import (
+    ModernButton,
+    ScrollableFrame,
+    ToolTip,
+    msg_error,
+    msg_info,
+    msg_yesno,
+    msg_yesnocancel,
+)
 
 
 class BasePage(ttk.Frame):
@@ -23,86 +46,86 @@ class BasePage(ttk.Frame):
         self.tip = tip
         self.duzenlenen_id = None
 
-        top_panel = tk.Frame(self, bg=RENK_KART, padx=20, pady=20)
-        top_panel.pack(fill="x", pady=(0, 20))
+        top_panel = tk.Frame(self, bg=RENK_KART, padx=20, pady=16)
+        top_panel.pack(fill="x", pady=(0, 12))
+        self._top_panel = top_panel
 
-        tk.Label(
-            top_panel, text=title, font=FONT_BASLIK, bg=RENK_KART, fg="#2c3e50"
-        ).pack(side="top", pady=(0, 8))
-
-        self.lbl_durum = tk.Label(
-            top_panel,
-            text="",
-            font=FONT_NORMAL,
-            bg=RENK_KART,
-            fg="#e67e22",
+        self.lbl_baslik = tk.Label(
+            top_panel, text=title, font=FONT_BASLIK, bg=RENK_KART, fg=RENK_METIN
         )
-        self.lbl_durum.pack(side="top", pady=(0, 10))
+        self.lbl_baslik.pack(side="top", pady=(0, 8))
+
+        self.banner = tk.Frame(top_panel, bg=RENK_BANNER, padx=12, pady=8)
+        self.lbl_durum = tk.Label(
+            self.banner,
+            text="",
+            font=FONT_BOLD,
+            bg=RENK_BANNER,
+            fg=RENK_BANNER_METIN,
+            anchor="w",
+        )
+        self.lbl_durum.pack(side="left", fill="x", expand=True)
+        ModernButton(
+            self.banner,
+            text="İptal",
+            bg=RENK_IKINCIL,
+            fg="white",
+            width=8,
+            command=self.yeni_recete,
+        ).pack(side="right")
 
         grid_frame = tk.Frame(top_panel, bg=RENK_KART)
         grid_frame.pack()
+        self._grid_frame = grid_frame
 
         tk.Label(
             grid_frame,
             text="Reçete Adı",
             bg=RENK_KART,
             font=FONT_BOLD,
-            fg="#7f8c8d",
+            fg=RENK_METIN_SOLUK,
         ).grid(row=0, column=0, padx=10, sticky="w")
-        self.ent_isim = ttk.Entry(grid_frame, width=25, font=FONT_NORMAL)
+        self.ent_isim = ttk.Entry(grid_frame, width=28, font=FONT_NORMAL)
         self.ent_isim.grid(row=1, column=0, padx=10, pady=5)
-
-        tk.Label(
-            grid_frame,
-            text="Ürün Sayısı",
-            bg=RENK_KART,
-            font=FONT_BOLD,
-            fg="#7f8c8d",
-        ).grid(row=0, column=1, padx=10, sticky="w")
-        self.ent_sayi = ttk.Entry(grid_frame, width=15, font=FONT_NORMAL)
-        self.ent_sayi.grid(row=1, column=1, padx=10, pady=5)
 
         self.lbl_param = tk.Label(
             grid_frame,
             text="Parametre",
             bg=RENK_KART,
             font=FONT_BOLD,
-            fg="#7f8c8d",
+            fg=RENK_METIN_SOLUK,
         )
         self.ent_param = ttk.Entry(grid_frame, width=15, font=FONT_NORMAL)
 
-        col = 2
+        col = 1
         if tip == "Kimyasal":
             self.lbl_param.config(text="Flotte (1/X)")
             self.lbl_param.grid(row=0, column=col, padx=10, sticky="w")
             self.ent_param.grid(row=1, column=col, padx=10, pady=5)
+            ToolTip(self.ent_param, IPUCU_FLOTTE)
+            ToolTip(self.lbl_param, IPUCU_FLOTTE)
             col += 1
         elif tip == "Apre":
             self.lbl_param.config(text="Pick-up (%)")
             self.lbl_param.grid(row=0, column=col, padx=10, sticky="w")
             self.ent_param.grid(row=1, column=col, padx=10, pady=5)
+            ToolTip(self.ent_param, IPUCU_PICKUP)
+            ToolTip(self.lbl_param, IPUCU_PICKUP)
             col += 1
 
-        tk.Label(
+        lbl_fire = tk.Label(
             grid_frame,
             text="Fire Oranı",
             bg=RENK_KART,
             font=FONT_BOLD,
-            fg="#7f8c8d",
-        ).grid(row=0, column=col, padx=10, sticky="w")
+            fg=RENK_METIN_SOLUK,
+        )
+        lbl_fire.grid(row=0, column=col, padx=10, sticky="w")
         self.ent_fire = ttk.Entry(grid_frame, width=12, font=FONT_NORMAL)
         self.ent_fire.insert(0, str(FIRE_ORANI_VARSAYILAN))
         self.ent_fire.grid(row=1, column=col, padx=10, pady=5)
-        btn_col = col + 1
-
-        ModernButton(
-            grid_frame,
-            text="Listeyi Oluştur",
-            bg="#27ae60",
-            fg="white",
-            width=15,
-            command=self.tabloyu_olustur,
-        ).grid(row=1, column=btn_col, padx=20, sticky="e")
+        ToolTip(self.ent_fire, IPUCU_FIRE)
+        ToolTip(lbl_fire, IPUCU_FIRE)
 
         self.mid_panel = ScrollableFrame(self)
         self.mid_panel.pack(fill="both", expand=True)
@@ -120,16 +143,32 @@ class BasePage(ttk.Frame):
             width=14,
             command=self.satir_ekle,
         ).pack(side="left", padx=4)
+
+        tk.Label(
+            row_bar, text="Adet:", bg=RENK_BG, fg=RENK_METIN_SOLUK, font=FONT_NORMAL
+        ).pack(side="left", padx=(12, 4))
+        self.ent_ekle_adet = ttk.Entry(row_bar, width=4, font=FONT_NORMAL)
+        self.ent_ekle_adet.insert(0, "1")
+        self.ent_ekle_adet.pack(side="left")
+        ModernButton(
+            row_bar,
+            text="Ekle",
+            bg="#2980b9",
+            fg="white",
+            width=6,
+            command=self.coklu_satir_ekle,
+        ).pack(side="left", padx=4)
+
         ModernButton(
             row_bar,
             text="Son Satırı Sil",
-            bg="#c0392b",
+            bg=RENK_TEHLIKE,
             fg="white",
             width=14,
             command=self.son_satiri_sil,
-        ).pack(side="left", padx=4)
+        ).pack(side="left", padx=8)
         self.lbl_satir_bilgi = tk.Label(
-            row_bar, text="Satır: 0", bg=RENK_BG, fg="#7f8c8d", font=FONT_NORMAL
+            row_bar, text="Satır: 0", bg=RENK_BG, fg=RENK_METIN_SOLUK, font=FONT_NORMAL
         )
         self.lbl_satir_bilgi.pack(side="left", padx=12)
 
@@ -163,7 +202,7 @@ class BasePage(ttk.Frame):
         ModernButton(
             act_frame,
             text="YENİ",
-            bg="#7f8c8d",
+            bg=RENK_IKINCIL,
             fg="white",
             width=10,
             command=self.yeni_recete,
@@ -179,24 +218,92 @@ class BasePage(ttk.Frame):
         ModernButton(
             act_frame,
             text="KAYDET",
-            bg="#16a085",
+            bg=RENK_BASARI,
             fg="white",
             width=15,
             command=self.kaydet,
         ).pack(side="left", padx=5)
 
+        self.satir_ekle()
+
+    def _toast(self, msg, kind="ok"):
+        if hasattr(self.controller, "toast"):
+            self.controller.toast.show(msg, kind=kind)
+
+    def on_show(self):
+        self._katalog_comboboxlari_yenile()
+
+    def kurlar_degisti(self):
+        """Kur yenilendiğinde footer toplamını sessizce güncelle."""
+        try:
+            data, param, fire = self.verileri_al()
+            toplam_tl = recete_toplam(
+                data, self.tip, param, self.controller.kurlar, fire
+            )
+        except ValidationError:
+            return
+        usd = toplam_tl / self.controller.kurlar["USD"]
+        eur = toplam_tl / self.controller.kurlar["EUR"]
+        self.lbl_tl.config(text=f"{toplam_tl:.4f} TL / Kg")
+        self.lbl_doviz.config(text=f"$ {usd:.4f} | € {eur:.4f}")
+
+    def _katalog_comboboxlari_yenile(self):
+        adlar = ["— Katalogdan seç —"] + self._katalog_adlari()
+        for row_ref in self.urun_satirlari:
+            c_kat = row_ref["widgets"][0]
+            mevcut = c_kat.get()
+            c_kat["values"] = adlar
+            if mevcut in adlar:
+                c_kat.set(mevcut)
+            else:
+                c_kat.set(adlar[0])
+
     def _durum_guncelle(self):
         if self.duzenlenen_id:
             self.lbl_durum.config(
-                text=f"Düzenleme modu — Kayıt ID: {self.duzenlenen_id}"
+                text=(
+                    f"Düzenleniyor: Reçete #{self.duzenlenen_id}"
+                    " — değişiklikler Kaydet ile yazılır"
+                )
             )
+            self._banner_goster()
         else:
-            self.lbl_durum.config(text="")
+            self.banner.pack_forget()
+
+    def _banner_goster(self):
+        self.lbl_baslik.pack_forget()
+        self.banner.pack_forget()
+        self._grid_frame.pack_forget()
+        self.lbl_baslik.pack(side="top", pady=(0, 8))
+        self.banner.pack(fill="x", pady=(0, 12))
+        self._grid_frame.pack()
+
+    def _form_kirli_mi(self):
+        if self.duzenlenen_id:
+            return True
+        if self.ent_isim.get().strip():
+            return True
+        if self.tip in ("Kimyasal", "Apre") and self.ent_param.get().strip():
+            return True
+        for row_ref in self.urun_satirlari:
+            e_ad, e_mik, _c_bir, e_fiy, _c_par = row_ref["fields"]
+            if e_ad.get().strip() or e_mik.get().strip() or e_fiy.get().strip():
+                return True
+        return False
 
     def yeni_recete(self):
+        if self._form_kirli_mi():
+            if not msg_yesno(
+                self,
+                "Onay",
+                "Kaydedilmemiş değişiklikler silinecek. Devam edilsin mi?",
+            ):
+                return
+        self._formu_sifirla()
+
+    def _formu_sifirla(self):
         self.duzenlenen_id = None
         self.ent_isim.delete(0, tk.END)
-        self.ent_sayi.delete(0, tk.END)
         if self.tip in ("Kimyasal", "Apre"):
             self.ent_param.delete(0, tk.END)
         self.ent_fire.delete(0, tk.END)
@@ -207,7 +314,7 @@ class BasePage(ttk.Frame):
         self._headers_hazir = False
         self.lbl_tl.config(text="0.00 TL")
         self.lbl_doviz.config(text="$ 0.00 | € 0.00")
-        self._sayi_guncelle()
+        self.satir_ekle()
         self._durum_guncelle()
 
     def _katalog_adlari(self):
@@ -255,9 +362,6 @@ class BasePage(ttk.Frame):
 
     def _sayi_guncelle(self):
         n = len(self.urun_satirlari)
-        self.ent_sayi.delete(0, tk.END)
-        if n:
-            self.ent_sayi.insert(0, str(n))
         self.lbl_satir_bilgi.config(text=f"Satır: {n}")
 
     def _basliklari_kur(self):
@@ -306,7 +410,7 @@ class BasePage(ttk.Frame):
         btn_sil = tk.Button(
             frame,
             text="✕",
-            bg="#e74c3c",
+            bg=RENK_TEHLIKE,
             fg="white",
             relief="flat",
             cursor="hand2",
@@ -356,9 +460,20 @@ class BasePage(ttk.Frame):
         self._satir_ekle(len(self.urun_satirlari) + 1, self._widths)
         self._sayi_guncelle()
 
+    def coklu_satir_ekle(self):
+        try:
+            adet = int(self.ent_ekle_adet.get().strip())
+            if adet < 1 or adet > 50:
+                raise ValueError
+        except ValueError:
+            msg_error(self, "Hata", "Adet 1–50 arasında bir tam sayı olmalıdır.")
+            return
+        for _ in range(adet):
+            self.satir_ekle()
+
     def satir_sil(self, row_ref):
         if len(self.urun_satirlari) <= 1:
-            messagebox.showinfo("Bilgi", "En az bir satır bulunmalıdır.")
+            msg_info(self, "Bilgi", "En az bir satır bulunmalıdır.")
             return
         if row_ref not in self.urun_satirlari:
             return
@@ -370,7 +485,7 @@ class BasePage(ttk.Frame):
 
     def son_satiri_sil(self):
         if not self.urun_satirlari:
-            messagebox.showinfo("Bilgi", "Silinecek satır yok.")
+            msg_info(self, "Bilgi", "Silinecek satır yok.")
             return
         self.satir_sil(self.urun_satirlari[-1])
 
@@ -380,19 +495,7 @@ class BasePage(ttk.Frame):
         self.urun_satirlari.clear()
         self._headers_hazir = False
 
-        if icerik is not None:
-            sayi = max(len(icerik), 1)
-        else:
-            try:
-                sayi = int(self.ent_sayi.get().strip())
-                if sayi <= 0:
-                    raise ValueError
-            except ValueError:
-                messagebox.showerror(
-                    "Hata", "Ürün sayısı pozitif bir tam sayı olmalıdır."
-                )
-                return
-
+        sayi = max(len(icerik), 1) if icerik is not None else 1
         self._basliklari_kur()
         for i in range(sayi):
             item = icerik[i] if icerik and i < len(icerik) else None
@@ -415,17 +518,12 @@ class BasePage(ttk.Frame):
         self.hesapla()
 
     def verileri_al(self):
-        """Returns (icerik, parametre, fire_orani). ValidationError fırlatabilir."""
         parametre = 1.0
         if self.tip in ("Kimyasal", "Apre"):
             alan = "Flotte (1/X)" if self.tip == "Kimyasal" else "Pick-up (%)"
-            parametre = parse_float(self.ent_param.get(), alan)
-            if parametre <= 0:
-                raise ValidationError(f"{alan} sıfırdan büyük olmalıdır.")
+            parametre = parse_pozitif(self.ent_param.get(), alan)
 
-        fire_orani = parse_float(self.ent_fire.get(), "Fire oranı")
-        if fire_orani <= 0:
-            raise ValidationError("Fire oranı sıfırdan büyük olmalıdır.")
+        fire_orani = parse_pozitif(self.ent_fire.get(), "Fire oranı")
 
         icerik = []
         for satir_no, row_ref in enumerate(self.urun_satirlari, start=1):
@@ -433,13 +531,16 @@ class BasePage(ttk.Frame):
             ad = e_ad.get().strip()
             if not ad:
                 continue
+            para = c_par.get() or "TL"
+            if para not in ("TL", "USD", "EUR"):
+                raise ValidationError(f"{satir_no}. satır: bilinmeyen para birimi.")
             icerik.append(
                 {
                     "ad": ad,
-                    "miktar": parse_float(e_mik.get(), f"{satir_no}. satır miktar"),
+                    "miktar": parse_pozitif(e_mik.get(), f"{satir_no}. satır miktar"),
                     "birim": c_bir.get(),
-                    "fiyat": parse_float(e_fiy.get(), f"{satir_no}. satır fiyat"),
-                    "para": c_par.get() or "TL",
+                    "fiyat": parse_pozitif(e_fiy.get(), f"{satir_no}. satır fiyat"),
+                    "para": para,
                 }
             )
 
@@ -454,7 +555,7 @@ class BasePage(ttk.Frame):
                 data, self.tip, param, self.controller.kurlar, fire
             )
         except ValidationError as exc:
-            messagebox.showerror("Hata", str(exc))
+            msg_error(self, "Hata", str(exc))
             return None
 
         usd = toplam_tl / self.controller.kurlar["USD"]
@@ -466,7 +567,7 @@ class BasePage(ttk.Frame):
     def kaydet(self):
         isim = self.ent_isim.get().strip()
         if not isim:
-            messagebox.showerror("Hata", "Reçete adı zorunludur.")
+            msg_error(self, "Hata", "Reçete adı zorunludur.")
             return
         tutar = self.hesapla()
         if tutar is None:
@@ -474,7 +575,7 @@ class BasePage(ttk.Frame):
         try:
             data, param, fire = self.verileri_al()
         except ValidationError as exc:
-            messagebox.showerror("Hata", str(exc))
+            msg_error(self, "Hata", str(exc))
             return
 
         db = self.controller.db
@@ -484,16 +585,15 @@ class BasePage(ttk.Frame):
                 self.duzenlenen_id, self.tip, isim, param, data, fire
             )
             if not ok:
-                messagebox.showerror("Hata", "Güncellenecek kayıt bulunamadı.")
+                msg_error(self, "Hata", "Güncellenecek kayıt bulunamadı.")
                 return
-            messagebox.showinfo(
-                "Başarılı", f"Reçete güncellendi (ID: {self.duzenlenen_id})."
-            )
+            self._toast(f"Reçete güncellendi (ID: {self.duzenlenen_id})")
             return
 
         mevcut_id = db.son_id_by_isim(self.tip, isim)
         if mevcut_id:
-            cevap = messagebox.askyesnocancel(
+            cevap = msg_yesnocancel(
+                self,
                 "Aynı isimde reçete var",
                 f"'{isim}' adında kayıt mevcut (ID: {mevcut_id}).\n\n"
                 "Evet: Üzerine yaz\n"
@@ -506,15 +606,13 @@ class BasePage(ttk.Frame):
                 db.guncelle(mevcut_id, self.tip, isim, param, data, fire)
                 self.duzenlenen_id = mevcut_id
                 self._durum_guncelle()
-                messagebox.showinfo(
-                    "Başarılı", f"Reçete üzerine yazıldı (ID: {mevcut_id})."
-                )
+                self._toast(f"Reçete üzerine yazıldı (ID: {mevcut_id})")
                 return
 
         yeni_id = db.kaydet(self.tip, isim, param, data, fire)
         self.duzenlenen_id = yeni_id
         self._durum_guncelle()
-        messagebox.showinfo("Başarılı", f"Reçete kaydedildi (ID: {yeni_id}).")
+        self._toast(f"Reçete kaydedildi (ID: {yeni_id})")
 
 
 class YardimciKimyasalPage(BasePage):
@@ -532,5 +630,3 @@ class BoyaMaliyetiPage(BasePage):
 class ApreMaliyetiPage(BasePage):
     def __init__(self, parent, controller):
         super().__init__(parent, controller, "APRE (BİTİM) MALİYETİ", "Apre")
-
-

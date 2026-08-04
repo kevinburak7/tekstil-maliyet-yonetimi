@@ -1,6 +1,8 @@
 """Maliyet hesaplama ve validasyon."""
 from tekstil_maliyet.constants import FIRE_ORANI_VARSAYILAN
 
+GECERLI_PARALAR = frozenset({"TL", "USD", "EUR"})
+
 
 class ValidationError(Exception):
     """Kullanıcıya gösterilecek giriş hatası."""
@@ -19,6 +21,14 @@ def parse_float(val, alan_adi="Değer"):
         raise ValidationError(f"{alan_adi} geçerli bir sayı değil: {val!r}") from exc
 
 
+def parse_pozitif(val, alan_adi="Değer"):
+    """Sıfırdan büyük sayı zorunlu."""
+    sayi = parse_float(val, alan_adi)
+    if sayi <= 0:
+        raise ValidationError(f"{alan_adi} sıfırdan büyük olmalıdır.")
+    return sayi
+
+
 def maliyet_hesapla(item, tip, parametre, kurlar, fire_orani=FIRE_ORANI_VARSAYILAN):
     """
     Tek maliyet formülü.
@@ -26,10 +36,20 @@ def maliyet_hesapla(item, tip, parametre, kurlar, fire_orani=FIRE_ORANI_VARSAYIL
     Kimyasal % / Boya: miktar * fiyat_tl / 100 * fire
     Apre: miktar * fiyat_tl / 10 / 100 * pickup * fire
     """
-    para = item.get("para", "TL")
-    kur = kurlar.get(para, 1.0)
-    fiyat_tl = float(item["fiyat"]) * kur
+    para = item.get("para", "TL") or "TL"
+    if para not in kurlar:
+        raise ValidationError(f"Bilinmeyen para birimi: {para}")
+    kur = kurlar[para]
+    fiyat = float(item["fiyat"])
     miktar = float(item["miktar"])
+    if miktar <= 0:
+        raise ValidationError("Miktar sıfırdan büyük olmalıdır.")
+    if fiyat <= 0:
+        raise ValidationError("Fiyat sıfırdan büyük olmalıdır.")
+    if fire_orani is None or float(fire_orani) <= 0:
+        raise ValidationError("Fire oranı sıfırdan büyük olmalıdır.")
+
+    fiyat_tl = fiyat * kur
     birim = item.get("birim") or ""
 
     if tip == "Kimyasal":
@@ -56,3 +76,22 @@ def recete_toplam(icerik, tip, parametre, kurlar, fire_orani=FIRE_ORANI_VARSAYIL
     )
 
 
+def guvenli_maliyet(item, tip, parametre, kurlar, fire_orani=FIRE_ORANI_VARSAYILAN):
+    """(maliyet|None, hata_mesaji|None) — export/detay için."""
+    try:
+        return maliyet_hesapla(item, tip, parametre, kurlar, fire_orani), None
+    except ValidationError as exc:
+        return None, str(exc)
+
+
+def guvenli_toplam(icerik, tip, parametre, kurlar, fire_orani=FIRE_ORANI_VARSAYILAN):
+    """(toplam|None, hata_var: bool). Hatalı satır varsa toplam None."""
+    if not icerik:
+        return 0.0, False
+    toplam = 0.0
+    for item in icerik:
+        m, err = guvenli_maliyet(item, tip, parametre, kurlar, fire_orani)
+        if err:
+            return None, True
+        toplam += m
+    return toplam, False

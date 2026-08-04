@@ -71,6 +71,26 @@ class TestMaliyetHesapla(unittest.TestCase):
         # 2 * 100 / 100 * 1.5 = 3.0
         self.assertAlmostEqual(maliyet_hesapla(item, "Boya", 1, KURLAR, 1.5), 3.0)
 
+    def test_negatif_miktar(self):
+        item = {"miktar": -1, "fiyat": 100, "para": "TL", "birim": "% (Boya)"}
+        with self.assertRaises(ValidationError):
+            maliyet_hesapla(item, "Boya", 1, KURLAR)
+
+    def test_bilinmeyen_para(self):
+        item = {"miktar": 1, "fiyat": 100, "para": "GBP", "birim": "% (Boya)"}
+        with self.assertRaises(ValidationError):
+            maliyet_hesapla(item, "Boya", 1, KURLAR)
+
+    def test_parse_pozitif(self):
+        from maliyet import parse_pozitif
+
+        self.assertEqual(parse_pozitif("3"), 3.0)
+        with self.assertRaises(ValidationError):
+            parse_pozitif("0")
+        with self.assertRaises(ValidationError):
+            parse_pozitif("-2")
+
+
 
 class TestVeritabani(unittest.TestCase):
     def setUp(self):
@@ -134,6 +154,16 @@ class TestVeritabani(unittest.TestCase):
         self.assertEqual(urun["fiyat"], 8.0)
         self.assertTrue(self.db.katalog_sil(kid))
         self.assertEqual(self.db.katalog_listele(sadece_aktif=False), [])
+
+    def test_katalog_pasif(self):
+        kid = self.db.katalog_ekle("Pasif Urun", "g/l", 1.0, "TL")
+        self.assertTrue(
+            self.db.katalog_guncelle(kid, "Pasif Urun", "g/l", 1.0, "TL", aktif=False)
+        )
+        self.assertEqual(self.db.katalog_listele(sadece_aktif=True), [])
+        hepsi = self.db.katalog_listele(sadece_aktif=False)
+        self.assertEqual(len(hepsi), 1)
+        self.assertFalse(hepsi[0]["aktif"])
 
 
 class TestExcelAktar(unittest.TestCase):

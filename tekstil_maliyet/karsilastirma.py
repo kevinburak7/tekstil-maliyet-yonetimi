@@ -1,6 +1,6 @@
 """Reçete karşılaştırma mantığı."""
 from tekstil_maliyet.constants import FIRE_ORANI_VARSAYILAN
-from tekstil_maliyet.hesaplama import ValidationError, maliyet_hesapla, recete_toplam
+from tekstil_maliyet.hesaplama import guvenli_maliyet, guvenli_toplam
 
 
 def _param_metin(tur, param):
@@ -14,26 +14,23 @@ def _param_metin(tur, param):
 def recete_ozet(recete, kurlar):
     """Tek reçetenin karşılaştırma özetini üretir."""
     fire = float(recete.get("fire_orani") or FIRE_ORANI_VARSAYILAN)
-    try:
-        maliyet = recete_toplam(
-            recete.get("icerik") or [],
-            recete["tur"],
-            recete["parametre"],
-            kurlar,
-            fire,
-        )
-    except ValidationError:
-        maliyet = 0.0
+    maliyet, hata = guvenli_toplam(
+        recete.get("icerik") or [],
+        recete["tur"],
+        recete["parametre"],
+        kurlar,
+        fire,
+    )
 
     satir_maliyetleri = {}
     for item in recete.get("icerik") or []:
         ad = str(item.get("ad") or "").strip() or "(adsız)"
-        try:
-            m = maliyet_hesapla(
-                item, recete["tur"], recete["parametre"], kurlar, fire
-            )
-        except ValidationError:
-            m = 0.0
+        m, err = guvenli_maliyet(
+            item, recete["tur"], recete["parametre"], kurlar, fire
+        )
+        if err:
+            hata = True
+            continue
         satir_maliyetleri[ad] = satir_maliyetleri.get(ad, 0.0) + m
 
     return {
@@ -44,7 +41,8 @@ def recete_ozet(recete, kurlar):
         "param_metin": _param_metin(recete.get("tur"), recete.get("parametre")),
         "fire_orani": fire,
         "tarih": str(recete.get("tarih") or "")[:19],
-        "maliyet": maliyet,
+        "maliyet": 0.0 if hata else maliyet,
+        "hata": hata,
         "satir_sayisi": len(recete.get("icerik") or []),
         "satir_maliyetleri": satir_maliyetleri,
     }
@@ -63,10 +61,19 @@ def karsilastir(receteler, kurlar):
         raise ValueError("Karşılaştırma için en az 2 reçete gerekir.")
 
     ozetler = [recete_ozet(r, kurlar) for r in receteler]
-    min_maliyet = min(o["maliyet"] for o in ozetler)
-    en_ucuz = next(o for o in ozetler if o["maliyet"] == min_maliyet)
+    gecerli = [o for o in ozetler if not o.get("hata")]
+    if not gecerli:
+        raise ValueError("Karşılaştırılacak geçerli maliyet bulunamadı.")
+
+    min_maliyet = min(o["maliyet"] for o in gecerli)
+    en_ucuz = next(o for o in gecerli if o["maliyet"] == min_maliyet)
 
     for o in ozetler:
+        if o.get("hata"):
+            o["fark_tl"] = None
+            o["fark_yuzde"] = None
+            o["en_ucuz"] = False
+            continue
         fark = o["maliyet"] - min_maliyet
         o["fark_tl"] = fark
         o["fark_yuzde"] = (

@@ -3,22 +3,43 @@ import os
 from datetime import datetime
 
 from tekstil_maliyet.constants import FIRE_ORANI_VARSAYILAN
-from tekstil_maliyet.hesaplama import ValidationError, maliyet_hesapla, recete_toplam
+from tekstil_maliyet.hesaplama import guvenli_maliyet, guvenli_toplam
 
 
 def _font_yollari():
-    """Windows Arial (Türkçe karakter) yollarını döndürür."""
+    """Türkçe destekli TrueType font yollarını döndürür."""
     windir = os.environ.get("WINDIR", r"C:\Windows")
-    fonts = os.path.join(windir, "Fonts")
-    regular = os.path.join(fonts, "arial.ttf")
-    bold = os.path.join(fonts, "arialbd.ttf")
-    if not os.path.isfile(regular):
-        raise RuntimeError(
-            "PDF için Arial fontu bulunamadı. Windows Fonts klasörünü kontrol edin."
-        )
-    if not os.path.isfile(bold):
-        bold = regular
-    return regular, bold
+    adaylar = [
+        (
+            os.path.join(windir, "Fonts", "arial.ttf"),
+            os.path.join(windir, "Fonts", "arialbd.ttf"),
+        ),
+        (
+            os.path.join(windir, "Fonts", "segoeui.ttf"),
+            os.path.join(windir, "Fonts", "segoeuib.ttf"),
+        ),
+        (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        ),
+        (
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+        ),
+        (
+            "/Library/Fonts/Arial.ttf",
+            "/Library/Fonts/Arial Bold.ttf",
+        ),
+    ]
+    for regular, bold in adaylar:
+        if os.path.isfile(regular):
+            if not os.path.isfile(bold):
+                bold = regular
+            return regular, bold
+    raise RuntimeError(
+        "PDF için uygun TrueType font bulunamadı "
+        "(Arial / Segoe UI / DejaVu Sans)."
+    )
 
 
 def pdf_aktar(dosya_yolu, receteler, kurlar):
@@ -52,7 +73,6 @@ def pdf_aktar(dosya_yolu, receteler, kurlar):
     )
     pdf.ln(4)
 
-    # Özet tablo
     pdf.set_font("AppFont", "B", 12)
     pdf.cell(0, 8, "Özet", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("AppFont", "B", 9)
@@ -70,28 +90,24 @@ def pdf_aktar(dosya_yolu, receteler, kurlar):
     ozet_veriler = []
     for recete in receteler:
         fire = float(recete.get("fire_orani") or FIRE_ORANI_VARSAYILAN)
-        try:
-            toplam = recete_toplam(
-                recete["icerik"],
-                recete["tur"],
-                recete["parametre"],
-                kurlar,
-                fire,
-            )
-        except ValidationError:
-            toplam = 0.0
-        ozet_veriler.append((recete, fire, toplam))
+        toplam, hata = guvenli_toplam(
+            recete["icerik"],
+            recete["tur"],
+            recete["parametre"],
+            kurlar,
+            fire,
+        )
+        ozet_veriler.append((recete, fire, toplam, hata))
         pdf.set_font("AppFont", "", 8)
         isim = str(recete.get("isim") or "")[:40]
         pdf.cell(15, 6, str(recete.get("id", "")), border=1)
         pdf.cell(28, 6, str(recete.get("tur") or ""), border=1)
         pdf.cell(70, 6, isim, border=1)
         pdf.cell(18, 6, f"{fire:.2f}", border=1)
-        pdf.cell(40, 6, f"{toplam:.4f}", border=1)
+        pdf.cell(40, 6, "HATA" if hata else f"{toplam:.4f}", border=1)
         pdf.ln()
 
-    # Detay sayfaları
-    for recete, fire, toplam in ozet_veriler:
+    for recete, fire, toplam, hata in ozet_veriler:
         pdf.add_page()
         pdf.set_font("AppFont", "B", 13)
         pdf.cell(
@@ -135,23 +151,23 @@ def pdf_aktar(dosya_yolu, receteler, kurlar):
 
         pdf.set_font("AppFont", "", 8)
         for item in recete.get("icerik") or []:
-            try:
-                satir = maliyet_hesapla(
-                    item, tur, recete["parametre"], kurlar, fire
-                )
-            except ValidationError:
-                satir = 0.0
+            satir, err = guvenli_maliyet(
+                item, tur, recete["parametre"], kurlar, fire
+            )
             pdf.cell(55, 6, str(item.get("ad") or "")[:32], border=1)
             pdf.cell(22, 6, f"{item.get('miktar', '')}", border=1)
             pdf.cell(28, 6, str(item.get("birim") or "")[:16], border=1)
             pdf.cell(22, 6, f"{item.get('fiyat', '')}", border=1)
             pdf.cell(16, 6, str(item.get("para") or ""), border=1)
-            pdf.cell(30, 6, f"{satir:.4f}", border=1)
+            pdf.cell(30, 6, "HATA" if err else f"{satir:.4f}", border=1)
             pdf.ln()
 
         pdf.ln(3)
         pdf.set_font("AppFont", "B", 11)
-        pdf.cell(0, 8, f"Birim maliyet (1 kg kumaş): {toplam:.4f} TL")
+        if hata:
+            pdf.cell(0, 8, "Birim maliyet: HATA (geçersiz satır var)")
+        else:
+            pdf.cell(0, 8, f"Birim maliyet (1 kg kumaş): {toplam:.4f} TL")
 
     pdf.output(dosya_yolu)
     return dosya_yolu

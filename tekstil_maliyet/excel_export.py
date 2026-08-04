@@ -1,17 +1,17 @@
 """Excel dışa aktarım."""
 from tekstil_maliyet.constants import FIRE_ORANI_VARSAYILAN
-from tekstil_maliyet.hesaplama import ValidationError, maliyet_hesapla, recete_toplam
+from tekstil_maliyet.hesaplama import guvenli_maliyet, guvenli_toplam
 
 
 def excel_aktar(dosya_yolu, receteler, kurlar):
     """Reçete listesini Excel (.xlsx) dosyasına yazar. openpyxl gerekir."""
     try:
         from openpyxl import Workbook
-        from openpyxl.styles import Font
     except ImportError as exc:
         raise RuntimeError(
             "Excel aktarımı için openpyxl gerekli. Kurulum: pip install openpyxl"
         ) from exc
+    from openpyxl.styles import Font
 
     wb = Workbook()
     ws_ozet = wb.active
@@ -26,6 +26,7 @@ def excel_aktar(dosya_yolu, receteler, kurlar):
             "Tarih",
             "Maliyet_TL_Kg",
             "Satir_Sayisi",
+            "Hata",
         ]
     )
     for cell in ws_ozet[1]:
@@ -44,6 +45,7 @@ def excel_aktar(dosya_yolu, receteler, kurlar):
             "Fiyat",
             "Para",
             "Satir_Maliyet_TL",
+            "Hata",
         ]
     )
     for cell in ws_detay[1]:
@@ -51,16 +53,13 @@ def excel_aktar(dosya_yolu, receteler, kurlar):
 
     for recete in receteler:
         fire = float(recete.get("fire_orani") or FIRE_ORANI_VARSAYILAN)
-        try:
-            toplam = recete_toplam(
-                recete["icerik"],
-                recete["tur"],
-                recete["parametre"],
-                kurlar,
-                fire,
-            )
-        except ValidationError:
-            toplam = 0.0
+        toplam, hata = guvenli_toplam(
+            recete["icerik"],
+            recete["tur"],
+            recete["parametre"],
+            kurlar,
+            fire,
+        )
         ws_ozet.append(
             [
                 recete["id"],
@@ -69,21 +68,19 @@ def excel_aktar(dosya_yolu, receteler, kurlar):
                 recete["parametre"],
                 fire,
                 str(recete.get("tarih") or ""),
-                round(toplam, 6),
+                None if hata else round(toplam, 6),
                 len(recete.get("icerik") or []),
+                "Evet" if hata else "",
             ]
         )
         for item in recete.get("icerik") or []:
-            try:
-                satir_maliyet = maliyet_hesapla(
-                    item,
-                    recete["tur"],
-                    recete["parametre"],
-                    kurlar,
-                    fire,
-                )
-            except ValidationError:
-                satir_maliyet = 0.0
+            satir_maliyet, err = guvenli_maliyet(
+                item,
+                recete["tur"],
+                recete["parametre"],
+                kurlar,
+                fire,
+            )
             ws_detay.append(
                 [
                     recete["id"],
@@ -95,11 +92,10 @@ def excel_aktar(dosya_yolu, receteler, kurlar):
                     item["birim"],
                     item["fiyat"],
                     item["para"],
-                    round(satir_maliyet, 6),
+                    None if err else round(satir_maliyet, 6),
+                    err or "",
                 ]
             )
 
     wb.save(dosya_yolu)
     return dosya_yolu
-
-

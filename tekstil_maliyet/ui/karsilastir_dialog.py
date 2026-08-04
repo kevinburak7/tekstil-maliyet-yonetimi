@@ -84,6 +84,14 @@ class KarsilastirDialog(tk.Toplevel):
 
         for o in ozetler:
             tags = ("ucuz",) if o["en_ucuz"] else ()
+            if o.get("hata"):
+                maliyet_s = "HATA"
+                fark_tl_s = "—"
+                fark_y_s = "—"
+            else:
+                maliyet_s = f"{o['maliyet']:.4f}"
+                fark_tl_s = f"{o['fark_tl']:+.4f}" if not o["en_ucuz"] else "—"
+                fark_y_s = f"{o['fark_yuzde']:+.1f}%" if not o["en_ucuz"] else "—"
             self.tree_ozet.insert(
                 "",
                 "end",
@@ -93,9 +101,9 @@ class KarsilastirDialog(tk.Toplevel):
                     o["tur"],
                     o["param_metin"],
                     f"{o['fire_orani']:.2f}",
-                    f"{o['maliyet']:.4f}",
-                    f"{o['fark_tl']:+.4f}" if not o["en_ucuz"] else "—",
-                    f"{o['fark_yuzde']:+.1f}%" if not o["en_ucuz"] else "—",
+                    maliyet_s,
+                    fark_tl_s,
+                    fark_y_s,
                 ),
                 tags=tags,
             )
