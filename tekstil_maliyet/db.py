@@ -53,6 +53,7 @@ class Veritabani:
         """
         )
         self._migrate_fire_orani()
+        self._migrate_baski_alanlari()
         self.conn.commit()
 
     def _migrate_fire_orani(self):
@@ -65,12 +66,23 @@ class Veritabani:
                 f"ALTER TABLE receteler ADD COLUMN fire_orani REAL DEFAULT {constants.FIRE_ORANI_VARSAYILAN}"
             )
 
+    def _migrate_baski_alanlari(self):
+        cols = {
+            row[1]
+            for row in self.cursor.execute("PRAGMA table_info(icerikler)").fetchall()
+        }
+        if "renk_no" not in cols:
+            self.cursor.execute("ALTER TABLE icerikler ADD COLUMN renk_no INTEGER")
+        if "doluluk" not in cols:
+            self.cursor.execute("ALTER TABLE icerikler ADD COLUMN doluluk REAL")
+
     def _icerik_ekle(self, recete_id, icerik_listesi):
         for item in icerik_listesi:
             self.cursor.execute(
                 """
-                INSERT INTO icerikler (recete_id, ad, miktar, birim, fiyat, para)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO icerikler
+                    (recete_id, ad, miktar, birim, fiyat, para, renk_no, doluluk)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     recete_id,
@@ -79,24 +91,34 @@ class Veritabani:
                     item["birim"],
                     item["fiyat"],
                     item["para"],
+                    item.get("renk_no"),
+                    item.get("doluluk"),
                 ),
             )
 
     def _icerik_getir(self, recete_id):
         self.cursor.execute(
-            "SELECT ad, miktar, birim, fiyat, para FROM icerikler WHERE recete_id=?",
+            """
+            SELECT ad, miktar, birim, fiyat, para, renk_no, doluluk
+            FROM icerikler WHERE recete_id=?
+            """,
             (recete_id,),
         )
-        return [
-            {
+        sonuc = []
+        for i in self.cursor.fetchall():
+            item = {
                 "ad": i[0],
                 "miktar": i[1],
                 "birim": i[2],
                 "fiyat": i[3],
                 "para": i[4],
             }
-            for i in self.cursor.fetchall()
-        ]
+            if i[5] is not None:
+                item["renk_no"] = int(i[5])
+            if i[6] is not None:
+                item["doluluk"] = float(i[6])
+            sonuc.append(item)
+        return sonuc
 
     def kaydet(self, tur, isim, parametre, icerik_listesi, fire_orani=constants.FIRE_ORANI_VARSAYILAN):
         self.cursor.execute(

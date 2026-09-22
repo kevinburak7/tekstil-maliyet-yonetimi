@@ -3,6 +3,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from tekstil_maliyet.constants import FONT_BASLIK, FONT_BOLD, FONT_NORMAL, RENK_BG, RENK_KART
+from tekstil_maliyet.hesaplama import fire_carpan_to_yuzde
 from tekstil_maliyet.karsilastirma import karsilastir
 from tekstil_maliyet.ui.widgets import ModernButton
 
@@ -71,7 +72,7 @@ class KarsilastirDialog(tk.Toplevel):
             "Isim": ("Reçete", 180),
             "Tur": ("Tür", 80),
             "Param": ("Parametre", 100),
-            "Fire": ("Fire", 60),
+            "Fire": ("Fire %", 60),
             "Maliyet": ("TL/kg", 90),
             "FarkTL": ("Fark TL", 80),
             "FarkYuzde": ("Fark %", 70),
@@ -100,7 +101,7 @@ class KarsilastirDialog(tk.Toplevel):
                     o["isim"][:40],
                     o["tur"],
                     o["param_metin"],
-                    f"{o['fire_orani']:.2f}",
+                    f"%{fire_carpan_to_yuzde(o['fire_orani']):g}",
                     maliyet_s,
                     fark_tl_s,
                     fark_y_s,

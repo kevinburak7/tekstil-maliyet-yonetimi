@@ -57,7 +57,7 @@ class KatalogPage(ttk.Frame):
         ).grid(row=0, column=1, sticky="w", padx=5)
         self.cmb_birim = ttk.Combobox(
             form,
-            values=["g/l", "%", "g/l (Apre)", "% (Boya)"],
+            values=["g/l", "%", "g/l (Apre)", "% (Boya)", "g/kg"],
             width=14,
             state="readonly",
         )

@@ -19,6 +19,7 @@ from tekstil_maliyet.ui.pages_base import (
     BoyaMaliyetiPage,
     YardimciKimyasalPage,
 )
+from tekstil_maliyet.ui.pages_baski import BaskiMaliyetiPage
 from tekstil_maliyet.ui.pages_katalog import KatalogPage
 from tekstil_maliyet.ui.widgets import ToastBar, msg_error, msg_warning
 
@@ -76,6 +77,7 @@ class MaliyetApp(tk.Tk):
         self.create_menu_button("Yardımcı Kimyasal", YardimciKimyasalPage)
         self.create_menu_button("Boya Maliyeti", BoyaMaliyetiPage)
         self.create_menu_button("Apre Maliyeti", ApreMaliyetiPage)
+        self.create_menu_button("Baskı Maliyeti", BaskiMaliyetiPage)
         self.create_menu_button("Kimyasal Kataloğu", KatalogPage)
         self.create_menu_button("Arşiv ve Analiz", ArsivPage)
 

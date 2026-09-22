@@ -3,7 +3,7 @@ import os
 from datetime import datetime
 
 from tekstil_maliyet.constants import FIRE_ORANI_VARSAYILAN
-from tekstil_maliyet.hesaplama import guvenli_maliyet, guvenli_toplam
+from tekstil_maliyet.hesaplama import fire_carpan_to_yuzde, guvenli_maliyet, guvenli_toplam
 
 
 def _font_yollari():
@@ -80,7 +80,7 @@ def pdf_aktar(dosya_yolu, receteler, kurlar):
         ("ID", 15),
         ("Tür", 28),
         ("Reçete", 70),
-        ("Fire", 18),
+        ("Fire %", 18),
         ("Maliyet TL/kg", 40),
     ]
     for baslik, w in ozet_cols:
@@ -103,7 +103,7 @@ def pdf_aktar(dosya_yolu, receteler, kurlar):
         pdf.cell(15, 6, str(recete.get("id", "")), border=1)
         pdf.cell(28, 6, str(recete.get("tur") or ""), border=1)
         pdf.cell(70, 6, isim, border=1)
-        pdf.cell(18, 6, f"{fire:.2f}", border=1)
+        pdf.cell(18, 6, f"{fire_carpan_to_yuzde(fire):g}", border=1)
         pdf.cell(40, 6, "HATA" if hata else f"{toplam:.4f}", border=1)
         pdf.ln()
 
@@ -124,12 +124,14 @@ def pdf_aktar(dosya_yolu, receteler, kurlar):
             p_str = f"Flotte: 1/{param}"
         elif tur == "Apre":
             p_str = f"Pick-up: %{param}"
+        elif tur == "Baski":
+            p_str = "Baskı (g/kg × doluluk)"
         else:
             p_str = "Parametre yok"
         pdf.cell(
             0,
             6,
-            f"Tür: {tur}  |  {p_str}  |  Fire: {fire}  |  "
+            f"Tür: {tur}  |  {p_str}  |  Fire: %{fire_carpan_to_yuzde(fire):g}  |  "
             f"Tarih: {str(recete.get('tarih') or '-')[:19]}",
             new_x="LMARGIN",
             new_y="NEXT",

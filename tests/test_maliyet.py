@@ -65,11 +65,54 @@ class TestMaliyetHesapla(unittest.TestCase):
 
     def test_fire_orani_sabiti(self):
         self.assertEqual(FIRE_ORANI_VARSAYILAN, 1.2)
+        from maliyet import FIRE_YUZDE_VARSAYILAN
+
+        self.assertEqual(FIRE_YUZDE_VARSAYILAN, 20.0)
+
+    def test_fire_yuzde_ceviri(self):
+        from maliyet import fire_carpan_to_yuzde, fire_yuzde_to_carpan, parse_fire_yuzde
+
+        self.assertAlmostEqual(fire_yuzde_to_carpan(20), 1.2)
+        self.assertAlmostEqual(fire_yuzde_to_carpan(0), 1.0)
+        self.assertAlmostEqual(fire_carpan_to_yuzde(1.2), 20.0)
+        self.assertEqual(parse_fire_yuzde("20"), 20.0)
+        self.assertEqual(parse_fire_yuzde("0"), 0.0)
+        with self.assertRaises(ValidationError):
+            parse_fire_yuzde("-5")
 
     def test_ozel_fire_orani(self):
         item = {"miktar": 2, "fiyat": 100, "para": "TL", "birim": "% (Boya)"}
         # 2 * 100 / 100 * 1.5 = 3.0
         self.assertAlmostEqual(maliyet_hesapla(item, "Boya", 1, KURLAR, 1.5), 3.0)
+
+    def test_baski_excel_ornegi(self):
+        """Excel: ((Σ miktar×fiyat / 1000) × doluluk) / 100 — fire=1."""
+        items = [
+            {"miktar": 100, "fiyat": 1.5, "para": "TL", "birim": "g/kg", "doluluk": 50},
+            {"miktar": 200, "fiyat": 2, "para": "TL", "birim": "g/kg", "doluluk": 50},
+            {"miktar": 50, "fiyat": 0.5, "para": "TL", "birim": "g/kg", "doluluk": 50},
+            {"miktar": 30, "fiyat": 0.75, "para": "TL", "birim": "g/kg", "doluluk": 50},
+            {"miktar": 150, "fiyat": 1, "para": "TL", "birim": "g/kg", "doluluk": 50},
+            {"miktar": 470, "fiyat": 0.25, "para": "TL", "birim": "g/kg", "doluluk": 50},
+        ]
+        # Σ tutar = 865 → ((865/1000)*50)/100 = 0.4325
+        self.assertAlmostEqual(recete_toplam(items, "Baski", 1, KURLAR, 1.0), 0.4325)
+
+    def test_baski_fire(self):
+        item = {
+            "miktar": 100,
+            "fiyat": 1.5,
+            "para": "TL",
+            "birim": "g/kg",
+            "doluluk": 50,
+        }
+        # 100*1.5/1000*50/100*1.2 = 0.09
+        self.assertAlmostEqual(maliyet_hesapla(item, "Baski", 1, KURLAR, 1.2), 0.09)
+
+    def test_baski_doluluk_zorunlu(self):
+        item = {"miktar": 100, "fiyat": 1.5, "para": "TL", "birim": "g/kg"}
+        with self.assertRaises(ValidationError):
+            maliyet_hesapla(item, "Baski", 1, KURLAR)
 
     def test_negatif_miktar(self):
         item = {"miktar": -1, "fiyat": 100, "para": "TL", "birim": "% (Boya)"}
@@ -118,28 +161,61 @@ class TestVeritabani(unittest.TestCase):
         ]
         rid = self.db.kaydet("Kimyasal", "Test Recete", 8.0, icerik, fire_orani=1.35)
         self.assertIsInstance(rid, int)
-
         rec = self.db.getir_by_id(rid)
         self.assertEqual(rec["isim"], "Test Recete")
-        self.assertAlmostEqual(rec["fire_orani"], 1.35)
+        self.assertEqual(rec["fire_orani"], 1.35)
         self.assertEqual(len(rec["icerik"]), 1)
         self.assertEqual(rec["icerik"][0]["ad"], "Asit")
+        self.assertNotIn("renk_no", rec["icerik"][0])
+        self.assertNotIn("doluluk", rec["icerik"][0])
 
-        yeni = [
-            {"ad": "Tuz", "miktar": 1.0, "birim": "%", "fiyat": 5.0, "para": "USD"}
-        ]
-        self.assertTrue(
-            self.db.guncelle(rid, "Kimyasal", "Test Recete 2", 10.0, yeni, fire_orani=1.1)
+        ok = self.db.guncelle(
+            rid,
+            "Kimyasal",
+            "Guncel",
+            10.0,
+            [{"ad": "Tuz", "miktar": 1.0, "birim": "%", "fiyat": 5.0, "para": "USD"}],
+            fire_orani=1.1,
         )
+        self.assertTrue(ok)
         rec2 = self.db.getir_by_id(rid)
-        self.assertEqual(rec2["isim"], "Test Recete 2")
+        self.assertEqual(rec2["isim"], "Guncel")
         self.assertEqual(rec2["parametre"], 10.0)
-        self.assertAlmostEqual(rec2["fire_orani"], 1.1)
+        self.assertEqual(rec2["fire_orani"], 1.1)
         self.assertEqual(rec2["icerik"][0]["ad"], "Tuz")
 
-        self.assertEqual(self.db.son_id_by_isim("Kimyasal", "Test Recete 2"), rid)
+        self.assertEqual(self.db.son_id_by_isim("Kimyasal", "Guncel"), rid)
         self.assertTrue(self.db.sil_by_id(rid))
         self.assertIsNone(self.db.getir_by_id(rid))
+
+    def test_baski_renk_doluluk_kayit(self):
+        icerik = [
+            {
+                "ad": "Pigment A",
+                "miktar": 100.0,
+                "birim": "g/kg",
+                "fiyat": 1.5,
+                "para": "TL",
+                "renk_no": 1,
+                "doluluk": 50.0,
+            },
+            {
+                "ad": "Binder",
+                "miktar": 200.0,
+                "birim": "g/kg",
+                "fiyat": 2.0,
+                "para": "TL",
+                "renk_no": 2,
+                "doluluk": 30.0,
+            },
+        ]
+        rid = self.db.kaydet("Baski", "Baski Test", 1.0, icerik, fire_orani=1.0)
+        rec = self.db.getir_by_id(rid)
+        self.assertEqual(rec["tur"], "Baski")
+        self.assertEqual(rec["icerik"][0]["renk_no"], 1)
+        self.assertEqual(rec["icerik"][0]["doluluk"], 50.0)
+        self.assertEqual(rec["icerik"][1]["renk_no"], 2)
+        self.assertEqual(rec["icerik"][1]["doluluk"], 30.0)
 
     def test_katalog_crud(self):
         kid = self.db.katalog_ekle("Asit A", "g/l", 12.5, "USD")
@@ -200,7 +276,7 @@ class TestExcelAktar(unittest.TestCase):
             self.assertIn("Ozet", wb.sheetnames)
             self.assertIn("Detay", wb.sheetnames)
             self.assertEqual(wb["Ozet"][2][2].value, "Demo")
-            self.assertEqual(wb["Ozet"][2][4].value, 1.5)
+            self.assertEqual(wb["Ozet"][2][4].value, 50.0)  # Fire_% (çarpan 1.5)
             # 2*100/100*1.5 = 3.0
             self.assertAlmostEqual(float(wb["Ozet"][2][6].value), 3.0)
         finally:

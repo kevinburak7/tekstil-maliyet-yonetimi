@@ -4,6 +4,7 @@ from tkinter import ttk
 
 from tekstil_maliyet.constants import (
     FIRE_ORANI_VARSAYILAN,
+    FIRE_YUZDE_VARSAYILAN,
     FONT_BASLIK,
     FONT_BOLD,
     FONT_NORMAL,
@@ -24,6 +25,9 @@ from tekstil_maliyet.constants import (
 )
 from tekstil_maliyet.hesaplama import (
     ValidationError,
+    fire_carpan_to_yuzde,
+    fire_yuzde_to_carpan,
+    parse_fire_yuzde,
     parse_float,
     parse_pozitif,
     recete_toplam,
@@ -115,14 +119,14 @@ class BasePage(ttk.Frame):
 
         lbl_fire = tk.Label(
             grid_frame,
-            text="Fire Oranı",
+            text="Fire Oranı (%)",
             bg=RENK_KART,
             font=FONT_BOLD,
             fg=RENK_METIN_SOLUK,
         )
         lbl_fire.grid(row=0, column=col, padx=10, sticky="w")
         self.ent_fire = ttk.Entry(grid_frame, width=12, font=FONT_NORMAL)
-        self.ent_fire.insert(0, str(FIRE_ORANI_VARSAYILAN))
+        self.ent_fire.insert(0, str(int(FIRE_YUZDE_VARSAYILAN)))
         self.ent_fire.grid(row=1, column=col, padx=10, pady=5)
         ToolTip(self.ent_fire, IPUCU_FIRE)
         ToolTip(lbl_fire, IPUCU_FIRE)
@@ -307,7 +311,7 @@ class BasePage(ttk.Frame):
         if self.tip in ("Kimyasal", "Apre"):
             self.ent_param.delete(0, tk.END)
         self.ent_fire.delete(0, tk.END)
-        self.ent_fire.insert(0, str(FIRE_ORANI_VARSAYILAN))
+        self.ent_fire.insert(0, str(int(FIRE_YUZDE_VARSAYILAN)))
         for widget in self.mid_panel.scrollable_frame.winfo_children():
             widget.destroy()
         self.urun_satirlari.clear()
@@ -510,9 +514,9 @@ class BasePage(ttk.Frame):
             self.ent_param.delete(0, tk.END)
             self.ent_param.insert(0, str(recete.get("parametre", "")))
         self.ent_fire.delete(0, tk.END)
-        self.ent_fire.insert(
-            0, str(recete.get("fire_orani", FIRE_ORANI_VARSAYILAN))
-        )
+        carpan = float(recete.get("fire_orani", FIRE_ORANI_VARSAYILAN))
+        yuzde = fire_carpan_to_yuzde(carpan)
+        self.ent_fire.insert(0, f"{yuzde:g}")
         self.tabloyu_olustur(icerik=recete.get("icerik") or [])
         self._durum_guncelle()
         self.hesapla()
@@ -523,7 +527,7 @@ class BasePage(ttk.Frame):
             alan = "Flotte (1/X)" if self.tip == "Kimyasal" else "Pick-up (%)"
             parametre = parse_pozitif(self.ent_param.get(), alan)
 
-        fire_orani = parse_pozitif(self.ent_fire.get(), "Fire oranı")
+        fire_orani = fire_yuzde_to_carpan(parse_fire_yuzde(self.ent_fire.get()))
 
         icerik = []
         for satir_no, row_ref in enumerate(self.urun_satirlari, start=1):

@@ -5,7 +5,8 @@ DB_YOLU = os.path.join(os.path.expanduser("~"), "tekstil_maliyet_pro.db")
 KUR_CACHE_YOLU = os.path.join(os.path.expanduser("~"), "tekstil_maliyet_kur_cache.json")
 TCMB_URL = "https://www.tcmb.gov.tr/kurlar/today.xml"
 KUR_TIMEOUT_SN = 8
-FIRE_ORANI_VARSAYILAN = 1.2
+FIRE_ORANI_VARSAYILAN = 1.2  # çarpan (hesaplama / DB)
+FIRE_YUZDE_VARSAYILAN = 20.0  # kullanıcı girişi: %20 ≡ çarpan 1.2
 YEDEK_KURLAR = {"TL": 1.0, "USD": 35.0, "EUR": 38.0}
 
 RENK_SIDEBAR = "#2c3e50"
@@ -30,8 +31,11 @@ TIP_SAYFA = {
     "Kimyasal": "Yardımcı Kimyasal",
     "Boya": "Boya Maliyeti",
     "Apre": "Apre Maliyeti",
+    "Baski": "Baskı Maliyeti",
 }
 
 IPUCU_FLOTTE = "Banyo oranı 1/X — örn. 1/8 için 8 yazın"
 IPUCU_PICKUP = "Kumaşın aldığı sıvı oranı (%) — örn. 80"
-IPUCU_FIRE = "Fire çarpanı — varsayılan 1.2 (%20 fire)"
+IPUCU_FIRE = "Fire oranı (%) — örn. 20 yazarsanız maliyet ×1.2 olur; 0 = firesiz"
+IPUCU_DOLULUK = "Desenin kumaş üzerindeki kaplama oranı (%) — örn. 50"
+IPUCU_BASKI_MIKTAR = "1 kg kumaş için kullanılan ürün miktarı (gram)"

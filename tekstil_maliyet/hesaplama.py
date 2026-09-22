@@ -29,12 +29,33 @@ def parse_pozitif(val, alan_adi="Değer"):
     return sayi
 
 
+def parse_fire_yuzde(val, alan_adi="Fire oranı (%)"):
+    """Fire yüzdesi (≥ 0). 20 → maliyet ×1.2."""
+    sayi = parse_float(val, alan_adi)
+    if sayi < 0:
+        raise ValidationError(f"{alan_adi} negatif olamaz.")
+    return sayi
+
+
+def fire_yuzde_to_carpan(yuzde):
+    """%20 → 1.2"""
+    return 1.0 + float(yuzde) / 100.0
+
+
+def fire_carpan_to_yuzde(carpan):
+    """1.2 → 20.0"""
+    return (float(carpan) - 1.0) * 100.0
+
+
 def maliyet_hesapla(item, tip, parametre, kurlar, fire_orani=FIRE_ORANI_VARSAYILAN):
     """
     Tek maliyet formülü.
+    fire_orani: çarpan (1.2 = %20 fire). UI yüzde alır, kaydetmeden önce çevrilir.
     Kimyasal g/l: miktar * fiyat_tl * flotte / 10 / 100 * fire
     Kimyasal % / Boya: miktar * fiyat_tl / 100 * fire
     Apre: miktar * fiyat_tl / 10 / 100 * pickup * fire
+    Baski: miktar(g/kg) * fiyat_tl / 1000 * doluluk/100 * fire
+           (= Excel: ((Σ tutar / 1000) * doluluk) / 100)
     """
     para = item.get("para", "TL") or "TL"
     if para not in kurlar:
@@ -66,6 +87,15 @@ def maliyet_hesapla(item, tip, parametre, kurlar, fire_orani=FIRE_ORANI_VARSAYIL
 
     if tip == "Boya":
         return miktar * fiyat_tl / 100.0 * fire_orani
+
+    if tip == "Baski":
+        doluluk = item.get("doluluk")
+        if doluluk is None:
+            raise ValidationError("Doluluk oranı zorunludur.")
+        doluluk = float(doluluk)
+        if doluluk <= 0:
+            raise ValidationError("Doluluk oranı (%) sıfırdan büyük olmalıdır.")
+        return miktar * fiyat_tl / 1000.0 * doluluk / 100.0 * fire_orani
 
     raise ValidationError(f"Bilinmeyen işlem türü: {tip}")
 

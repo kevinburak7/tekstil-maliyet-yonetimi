@@ -8,6 +8,8 @@ def _param_metin(tur, param):
         return f"Flotte 1/{param}"
     if tur == "Apre":
         return f"Pick-up %{param}"
+    if tur == "Baski":
+        return "Baskı (g/kg × doluluk)"
     return "-"
 
 

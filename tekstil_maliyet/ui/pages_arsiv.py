@@ -17,7 +17,7 @@ from tekstil_maliyet.constants import (
     RENK_VURGU,
 )
 from tekstil_maliyet.excel_export import excel_aktar
-from tekstil_maliyet.hesaplama import guvenli_maliyet, guvenli_toplam
+from tekstil_maliyet.hesaplama import fire_carpan_to_yuzde, guvenli_maliyet, guvenli_toplam
 from tekstil_maliyet.pdf_export import pdf_aktar
 from tekstil_maliyet.ui.karsilastir_dialog import KarsilastirDialog
 from tekstil_maliyet.ui.widgets import (
@@ -44,12 +44,19 @@ class DetayDialog(tk.Toplevel):
         tur = recete["tur"]
         param = recete["parametre"]
         fire = float(recete.get("fire_orani") or FIRE_ORANI_VARSAYILAN)
+        fire_yuzde = fire_carpan_to_yuzde(fire)
         icerik = recete["icerik"] or []
 
         if tur == "Kimyasal":
             p_str = f"Flotte: 1/{param}"
         elif tur == "Apre":
             p_str = f"Pick-up: %{param}"
+        elif tur == "Baski":
+            renkler = {
+                int(i.get("renk_no") or 1)
+                for i in icerik
+            }
+            p_str = f"{len(renkler)} renk"
         else:
             p_str = "Parametre yok"
 
@@ -66,7 +73,7 @@ class DetayDialog(tk.Toplevel):
         tk.Label(
             header,
             text=(
-                f"ID: {recete['id']}  ·  {p_str}  ·  Fire: {fire}  ·  "
+                f"ID: {recete['id']}  ·  {p_str}  ·  Fire: %{fire_yuzde:g}  ·  "
                 f"{recete.get('tarih') or '-'}"
             ),
             font=FONT_NORMAL,
@@ -75,18 +82,34 @@ class DetayDialog(tk.Toplevel):
             anchor="w",
         ).pack(fill="x", pady=(4, 0))
 
-        cols = ("Ad", "Miktar", "Birim", "Fiyat", "Para", "Maliyet")
-        tree = ttk.Treeview(self, columns=cols, show="headings", height=12)
-        for c, t, w, a in (
-            ("Ad", "ÜRÜN", 180, "w"),
-            ("Miktar", "MİKTAR", 70, "e"),
-            ("Birim", "BİRİM", 90, "center"),
-            ("Fiyat", "FİYAT", 80, "e"),
-            ("Para", "PARA", 60, "center"),
-            ("Maliyet", "TL", 90, "e"),
-        ):
-            tree.heading(c, text=t)
-            tree.column(c, width=w, anchor=a)
+        if tur == "Baski":
+            cols = ("Renk", "Ad", "Miktar", "Birim", "Fiyat", "Para", "Doluluk", "Maliyet")
+            tree = ttk.Treeview(self, columns=cols, show="headings", height=12)
+            for c, t, w, a in (
+                ("Renk", "RENK", 50, "center"),
+                ("Ad", "ÜRÜN", 160, "w"),
+                ("Miktar", "g/kg", 70, "e"),
+                ("Birim", "BİRİM", 70, "center"),
+                ("Fiyat", "FİYAT", 80, "e"),
+                ("Para", "PARA", 55, "center"),
+                ("Doluluk", "DOLULUK %", 80, "e"),
+                ("Maliyet", "TL", 90, "e"),
+            ):
+                tree.heading(c, text=t)
+                tree.column(c, width=w, anchor=a)
+        else:
+            cols = ("Ad", "Miktar", "Birim", "Fiyat", "Para", "Maliyet")
+            tree = ttk.Treeview(self, columns=cols, show="headings", height=12)
+            for c, t, w, a in (
+                ("Ad", "ÜRÜN", 180, "w"),
+                ("Miktar", "MİKTAR", 70, "e"),
+                ("Birim", "BİRİM", 90, "center"),
+                ("Fiyat", "FİYAT", 80, "e"),
+                ("Para", "PARA", 60, "center"),
+                ("Maliyet", "TL", 90, "e"),
+            ):
+                tree.heading(c, text=t)
+                tree.column(c, width=w, anchor=a)
         tree.pack(fill="both", expand=True, padx=16, pady=8)
 
         toplam = 0.0
@@ -99,18 +122,34 @@ class DetayDialog(tk.Toplevel):
             else:
                 toplam += maliyet
                 maliyet_str = f"{maliyet:.4f}"
-            tree.insert(
-                "",
-                "end",
-                values=(
-                    item.get("ad", ""),
-                    item.get("miktar", ""),
-                    item.get("birim", ""),
-                    item.get("fiyat", ""),
-                    item.get("para", ""),
-                    maliyet_str,
-                ),
-            )
+            if tur == "Baski":
+                tree.insert(
+                    "",
+                    "end",
+                    values=(
+                        item.get("renk_no", ""),
+                        item.get("ad", ""),
+                        item.get("miktar", ""),
+                        item.get("birim", ""),
+                        item.get("fiyat", ""),
+                        item.get("para", ""),
+                        item.get("doluluk", ""),
+                        maliyet_str,
+                    ),
+                )
+            else:
+                tree.insert(
+                    "",
+                    "end",
+                    values=(
+                        item.get("ad", ""),
+                        item.get("miktar", ""),
+                        item.get("birim", ""),
+                        item.get("fiyat", ""),
+                        item.get("para", ""),
+                        maliyet_str,
+                    ),
+                )
 
         footer = tk.Frame(self, bg=RENK_BG, padx=16, pady=12)
         footer.pack(fill="x")
@@ -173,7 +212,7 @@ class ArsivPage(ttk.Frame):
         ).pack(side="left", padx=(0, 6))
         self.cmb_tur = ttk.Combobox(
             filtre,
-            values=["Tümü", "Kimyasal", "Boya", "Apre"],
+            values=["Tümü", "Kimyasal", "Boya", "Apre", "Baski"],
             width=12,
             state="readonly",
         )

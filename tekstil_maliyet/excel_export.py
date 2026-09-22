@@ -1,6 +1,10 @@
 """Excel dışa aktarım."""
 from tekstil_maliyet.constants import FIRE_ORANI_VARSAYILAN
-from tekstil_maliyet.hesaplama import guvenli_maliyet, guvenli_toplam
+from tekstil_maliyet.hesaplama import (
+    fire_carpan_to_yuzde,
+    guvenli_maliyet,
+    guvenli_toplam,
+)
 
 
 def excel_aktar(dosya_yolu, receteler, kurlar):
@@ -22,7 +26,7 @@ def excel_aktar(dosya_yolu, receteler, kurlar):
             "Tur",
             "Isim",
             "Parametre",
-            "Fire_Orani",
+            "Fire_%",
             "Tarih",
             "Maliyet_TL_Kg",
             "Satir_Sayisi",
@@ -38,7 +42,7 @@ def excel_aktar(dosya_yolu, receteler, kurlar):
             "Recete_ID",
             "Recete_Adi",
             "Tur",
-            "Fire_Orani",
+            "Fire_%",
             "Urun",
             "Miktar",
             "Birim",
@@ -53,6 +57,7 @@ def excel_aktar(dosya_yolu, receteler, kurlar):
 
     for recete in receteler:
         fire = float(recete.get("fire_orani") or FIRE_ORANI_VARSAYILAN)
+        fire_yuzde = fire_carpan_to_yuzde(fire)
         toplam, hata = guvenli_toplam(
             recete["icerik"],
             recete["tur"],
@@ -66,7 +71,7 @@ def excel_aktar(dosya_yolu, receteler, kurlar):
                 recete["tur"],
                 recete["isim"],
                 recete["parametre"],
-                fire,
+                fire_yuzde,
                 str(recete.get("tarih") or ""),
                 None if hata else round(toplam, 6),
                 len(recete.get("icerik") or []),
@@ -86,7 +91,7 @@ def excel_aktar(dosya_yolu, receteler, kurlar):
                     recete["id"],
                     recete["isim"],
                     recete["tur"],
-                    fire,
+                    fire_yuzde,
                     item["ad"],
                     item["miktar"],
                     item["birim"],
